@@ -33,6 +33,9 @@
 #include <linux/compiler.h>
 #include <linux/moduleparam.h>
 #include <linux/wakeup_reason.h>
+#ifdef CONFIG_HW_PM_DEBUG
+#include <linux/ktime.h>
+#endif /* CONFIG_HW_PM_DEBUG */
 
 #include "power.h"
 
@@ -412,7 +415,7 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 		last_dev %= REC_FAILED_NUM;
 		pr_err("late suspend of devices failed\n");
 		log_suspend_abort_reason("late suspend of %s device failed",
-					 suspend_stats.failed_devs[last_dev]);
+			suspend_stats.failed_devs[last_dev]);
 		goto Platform_finish;
 	}
 	error = platform_suspend_prepare_late(state);
@@ -430,7 +433,7 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 		last_dev %= REC_FAILED_NUM;
 		pr_err("noirq suspend of devices failed\n");
 		log_suspend_abort_reason("noirq suspend of %s device failed",
-					 suspend_stats.failed_devs[last_dev]);
+			suspend_stats.failed_devs[last_dev]);
 		goto Platform_early_resume;
 	}
 	error = platform_suspend_prepare_noirq(state);
@@ -626,11 +629,20 @@ static int enter_state(suspend_state_t state)
 int pm_suspend(suspend_state_t state)
 {
 	int error;
-
+#ifdef CONFIG_HW_PM_DEBUG
+	struct tm tm;
+#endif /* CONFIG_HW_PM_DEBUG */
 	if (state <= PM_SUSPEND_ON || state >= PM_SUSPEND_MAX)
 		return -EINVAL;
 
+#ifdef CONFIG_HW_PM_DEBUG
+	time64_to_tm(ktime_get_real_seconds(), 0, &tm);
+	pr_info("suspend entry (%s) UTC:%d-%02d-%02d %02d:%02d:%02d\n",
+		mem_sleep_labels[state], tm.tm_year + 1900, tm.tm_mon + 1,
+		tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+#else /* CONFIG_HW_PM_DEBUG */
 	pr_info("suspend entry (%s)\n", mem_sleep_labels[state]);
+#endif /* CONFIG_HW_PM_DEBUG */
 	error = enter_state(state);
 	if (error) {
 		suspend_stats.fail++;
@@ -638,7 +650,14 @@ int pm_suspend(suspend_state_t state)
 	} else {
 		suspend_stats.success++;
 	}
+#ifdef CONFIG_HW_PM_DEBUG
+	time64_to_tm(ktime_get_real_seconds(), 0, &tm);
+	pr_info("suspend exit UTC:%d-%02d-%02d %02d:%02d:%02d\n",
+		tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+		tm.tm_hour, tm.tm_min, tm.tm_sec);
+#else  /* CONFIG_HW_PM_DEBUG */
 	pr_info("suspend exit\n");
+#endif /* CONFIG_HW_PM_DEBUG */
 	return error;
 }
 EXPORT_SYMBOL(pm_suspend);
